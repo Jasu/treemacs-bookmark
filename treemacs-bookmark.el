@@ -101,32 +101,28 @@ Stay in current window with a prefix argument ARG."
             ;; Store previous values of our button
             (old-path (treemacs-button-get current-btn :path))
             (old-state (treemacs-button-get current-btn :state)))
-       ;; Disable follow, since CURRENT-BTN refers to the position of the
-       ;; button. If follow is enabled, it would no longer be valid when restoring
-       ;; button state.
-       (treemacs-without-following
-        (treemacs-with-writable-buffer
-         ;; HACK STARTS HERE
-         (unwind-protect
-             (let ((is-dir (file-directory-p path)))
-               ;; Make the current bookmark button appear as a file/directory button.
-               (treemacs-button-put current-btn :path path)
-               (treemacs-button-put current-btn :state (if is-dir 'dir-node-closed 'file-node-closed))
-               (funcall-interactively
-                (cond
-                 ;; Primarily call the action of the button of the actual file/directory
-                 ((treemacs-bookmark--find-button-visit-action target-button))
-                 ;; If no button or the button does not have a visit action,
-                 ;; use the configured defaults.
-                 (is-dir treemacs-bookmark-default-directory-visit-action)
-                 (t treemacs-bookmark-default-file-visit-action))
-                arg))
-           ;; Always restore the values of current button, even on error.
-           ;; Executing the action has likely focused another window - restoring
-           ;; the button properties has to be done with another buffer.
-           (treemacs-with-button-buffer current-btn
-             (treemacs-button-put current-btn :path old-path)
-             (treemacs-button-put current-btn :state old-state)))))))))
+       (treemacs-with-writable-buffer
+        ;; HACK STARTS HERE
+        (unwind-protect
+            (let ((is-dir (file-directory-p path)))
+              ;; Make the current bookmark button appear as a file/directory button.
+              (treemacs-button-put current-btn :path path)
+              (treemacs-button-put current-btn :state (if is-dir 'dir-node-closed 'file-node-closed))
+              (funcall-interactively
+               (cond
+                ;; Primarily call the action of the button of the actual file/directory
+                ((treemacs-bookmark--find-button-visit-action target-button))
+                ;; If no button or the button does not have a visit action,
+                ;; use the configured defaults.
+                (is-dir treemacs-bookmark-default-directory-visit-action)
+                (t treemacs-bookmark-default-file-visit-action))
+               arg))
+          ;; Always restore the values of current button, even on error.
+          ;; Executing the action has likely focused another window - restoring
+          ;; the button properties has to be done with another buffer.
+          (treemacs-with-button-buffer current-btn
+            (treemacs-button-put current-btn :path old-path)
+            (treemacs-button-put current-btn :state old-state))))))))
 
 (defun treemacs-bookmark-goto-or-visit-bookmark (&optional arg)
   "Go to the current bookmark Treemacs or visit the file if in workspace.
