@@ -182,8 +182,13 @@ Stay in current window with a prefix argument ARG."
        :foreground "dark orange"))
   "Face for bookmarks which are not available in Treemacs.")
 
-(treemacs-define-leaf-node treemacs-bookmark-leaf
-  (treemacs-as-icon "• " 'face 'font-lock-builtin-face)
+(defface treemacs-bookmark-non-existent-face
+  '((t :inherit treemacs-bookmark-in-project-face
+       :foreground "red"
+       :weight bold))
+  "Face for bookmarks which do not exist on disk.")
+
+(treemacs-define-leaf-node treemacs-bookmark-leaf 'dynamic-icon
   :tab-action treemacs-bookmark-tab-action
   :ret-action treemacs-bookmark-ret-action
   :mouse1-action treemacs-bookmark-mouse1-action)
@@ -229,26 +234,54 @@ BTN is the bookmark button."
     (--filter (treemacs-is-path directory :parent-of (bookmark-location it))
               bookmark-alist)))
 
+(defsubst treemacs-bookmark--octicon (icon-name face)
+  "Get an Octicon by ICON-NAME as a Treemacs icon.  Use FACE to propertize the icon."
+  (let* ((face (list :family (all-the-icons-octicon-family) :inherit face))
+         (icon (all-the-icons-octicon icon-name :face face))
+         ;; Emacs does not provide a way to get string-width in pixels, except for
+         ;; already rendered text. Get the width of the glyph and multiple it by
+         ;; the :HEIGHT of the face.
+         (glyph (aref (font-get-glyphs (font-at 0 nil icon) 0 1 icon) 0))
+         (height (plist-get (get-char-property 0 'face icon) :height))
+         (icon-width (* height (aref glyph 4)))
+         (padding (* 0.5 (- treemacs--icon-size icon-width)))
+         (space-left (propertize " " 'display `((space :width (,(floor padding))))))
+         (space-right (propertize " " 'display `((space :width (,(ceiling padding)))))))
+    (treemacs-as-icon (concat space-left icon space-right " "))))
+
 (cl-macrolet
-    ((def (name &rest extra)
+    ((def (name &rest extra &key root-face &allow-other-keys)
           `(with-eval-after-load 'treemacs
              (treemacs-define-expandable-node ,name
-               :icon-open (treemacs-as-icon "- " 'face 'treemacs-bookmark-top-level-face)
-               :icon-closed (treemacs-as-icon "+ " 'face 'treemacs-bookmark-top-level-face)
+               :icon-open (treemacs-bookmark--octicon "bookmark" ,root-face)
+               :icon-closed (treemacs-bookmark--octicon "bookmark" ,root-face)
 
                :root-label "Bookmarks"
                :ret-action #'treemacs-TAB-action
 
                :render-action
-               (treemacs-render-node
-                :icon treemacs-treemacs-bookmark-leaf-icon
-                :state treemacs-treemacs-bookmark-leaf-state
-                :label-form (car item)
-                :key-form (car item)
-                :more-properties (:bookmark-location (bookmark-location item))
-                :face (if (treemacs-is-path (bookmark-location item) :in-workspace)
-                          'treemacs-bookmark-in-workspace-face
-                        'treemacs-bookmark-not-in-workspace-face))
+               (let* ((bookmark-path (bookmark-location item))
+                      (exists (file-exists-p bookmark-path))
+                      (is-dir (and exists (file-directory-p bookmark-path)))
+                      (in-workspace (treemacs-is-path bookmark-path :in-workspace))
+                      (bookmark-name (car item)))
+                 (treemacs-render-node
+                  :icon (cond
+                         ((not exists) treemacs-icon-error)
+                         ((and is-dir in-workspace) treemacs-icon-open)
+                         (is-dir treemacs-icon-closed)
+                         (t (treemacs-icon-for-file bookmark-path)))
+                  :state treemacs-treemacs-bookmark-leaf-state
+                  :label-form bookmark-name
+                  :key-form bookmark-name
+                  :more-properties (:bookmark-location bookmark-path)
+                  :face (cond
+                         ((not exists)
+                          'treemacs-bookmark-non-existent-face)
+                         (in-workspace
+                          'treemacs-bookmark-in-workspace-face)
+                         (t
+                          'treemacs-bookmark-not-in-workspace-face))))
                ,@extra))))
   (def treemacs-bookmark-top-level
        :query-function (treemacs-bookmark--top-level-bookmarks)
