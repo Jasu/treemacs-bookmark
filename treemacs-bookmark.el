@@ -5,8 +5,7 @@
 ;; URL: https://github.com/jasu/treemacs-bookmark
 ;; Author: Jasper Mattsson <jasu@njomotys.info>
 ;; Version: 0.1
-;; Keywords: mode-line
-;; Package-Requires: ((emacs "26.1") (treemacs "2.5"))
+;; Package-Requires: ((emacs "26.1") (treemacs "2.5") (dash "2.11.0") (all-the-icons "3.2.0"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -23,8 +22,8 @@
 
 ;;; Commentary:
 ;;
-;; treemacs-bookmark adds nodes for bookmarks in Treemacs root and/or
-;; for each project.
+;; Treemacs-bookmark shows bookmarks as expandable nodes in Treemacs, at
+;; root/dir/project level.
 
 ;;; Code:
 
