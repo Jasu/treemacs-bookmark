@@ -195,10 +195,12 @@ Stay in current window with a prefix argument ARG."
   :mouse1-action treemacs-bookmark-mouse1-action)
 
 (defun treemacs-bookmark--top-level-bookmarks ()
+  ; checkdoc-params: (checkdoc-symbol-words "top-level")
   "Get the list of bookmarks to show for the top-level bookmark list."
   bookmark-alist)
 
 (defun treemacs-bookmark--top-level-predicate (_)
+  ; checkdoc-params: (checkdoc-symbol-words "top-level")
   "Return non-nil if top-level bookmarks should be visible."
   (and treemacs-bookmark-top-level-position
        bookmark-alist))
@@ -260,38 +262,37 @@ BTN is the bookmark button."
 
 (cl-macrolet
     ((def (name &rest extra &key root-face &allow-other-keys)
-          `(with-eval-after-load 'treemacs
-             (treemacs-define-expandable-node ,name
-               :icon-open (treemacs-bookmark--octicon "bookmark" ,root-face)
-               :icon-closed (treemacs-bookmark--octicon "bookmark" ,root-face)
+          `(treemacs-define-expandable-node ,name
+             :icon-open (treemacs-bookmark--octicon "bookmark" ,root-face)
+             :icon-closed (treemacs-bookmark--octicon "bookmark" ,root-face)
 
-               :root-label "Bookmarks"
-               :ret-action #'treemacs-TAB-action
+             :root-label "Bookmarks"
+             :ret-action #'treemacs-TAB-action
 
-               :render-action
-               (let* ((bookmark-path (bookmark-location item))
-                      (exists (file-exists-p bookmark-path))
-                      (is-dir (and exists (file-directory-p bookmark-path)))
-                      (in-workspace (treemacs-is-path bookmark-path :in-workspace))
-                      (bookmark-name (car item)))
-                 (treemacs-render-node
-                  :icon (cond
-                         ((not exists) treemacs-icon-error)
-                         ((and is-dir in-workspace) treemacs-icon-open)
-                         (is-dir treemacs-icon-closed)
-                         (t (treemacs-icon-for-file bookmark-path)))
-                  :state treemacs-treemacs-bookmark-leaf-state
-                  :label-form bookmark-name
-                  :key-form bookmark-name
-                  :more-properties (:bookmark-location bookmark-path)
-                  :face (cond
-                         ((not exists)
-                          'treemacs-bookmark-non-existent-face)
-                         (in-workspace
-                          'treemacs-bookmark-in-workspace-face)
-                         (t
-                          'treemacs-bookmark-not-in-workspace-face))))
-               ,@extra))))
+             :render-action
+             (let* ((bookmark-path (bookmark-location item))
+                    (exists (file-exists-p bookmark-path))
+                    (is-dir (and exists (file-directory-p bookmark-path)))
+                    (in-workspace (treemacs-is-path bookmark-path :in-workspace))
+                    (bookmark-name (car item)))
+               (treemacs-render-node
+                :icon (cond
+                       ((not exists) treemacs-icon-error)
+                       ((and is-dir in-workspace) treemacs-icon-open)
+                       (is-dir treemacs-icon-closed)
+                       (t (treemacs-icon-for-file bookmark-path)))
+                :state treemacs-treemacs-bookmark-leaf-state
+                :label-form bookmark-name
+                :key-form bookmark-name
+                :more-properties (:bookmark-location bookmark-path)
+                :face (cond
+                       ((not exists)
+                        'treemacs-bookmark-non-existent-face)
+                       (in-workspace
+                        'treemacs-bookmark-in-workspace-face)
+                       (t
+                        'treemacs-bookmark-not-in-workspace-face))))
+             ,@extra)))
   (def treemacs-bookmark-top-level
        :query-function (treemacs-bookmark--top-level-bookmarks)
        :top-level-marker t
