@@ -68,6 +68,14 @@ On failure, error is pulsed."
             (treemacs-pulse-on-failure
                 "Bookmark '%s' is not in the Treemacs workspace." path))))
     (treemacs-goto-file-node path project)
+    (when (file-directory-p path)
+      (let ((button (treemacs-current-button)))
+        (unless (treemacs-is-node-expanded? button)
+          (treemacs-toggle-node))
+        (treemacs-next-line 1)
+        (unless (= (treemacs-button-get (treemacs-current-button) :parent)
+                   button)
+          (treemacs-previous-line 1))))
     (treemacs-pulse-on-success)))
 
 (defvar treemacs-bookmark--visit-actions
@@ -328,6 +336,16 @@ BTN is the bookmark button."
    :extension #'treemacs-TREEMACS-BOOKMARK-DIRECTORY-extension
    :predicate #'treemacs-bookmark--directory-predicate
    :position treemacs-bookmark-directory-position))
+
+(define-minor-mode treemacs-bookmark-mode
+  "Global minor mode for displaying bookmarks in Treemacs"
+  :global t
+  :group 'treemacs-bookmark
+  ;; TODO
+  :init-value t
+  (cond
+   (treemacs-bookmark-mode)
+   (t)))
 
 (provide 'treemacs-bookmark)
 
