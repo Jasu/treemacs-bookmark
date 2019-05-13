@@ -273,6 +273,31 @@ BTN is the bookmark button."
               result)))
     ""))
 
+(defun treemacs-bookmark--handler (record)
+  "Open Treemacs into a bookmark RECORD."
+  (unless (window-live-p (treemacs-get-local-window))
+    (treemacs))
+  (select-window (treemacs-get-local-window))
+  (treemacs-goto-node (bookmark-prop-get record 'treemacs-bookmark-path)))
+
+(defun treemacs-bookmark-make-record (&rest _)
+  "Make a bookmark record for the current Treemacs button."
+  (treemacs-with-current-button
+   "Not on a button."
+   (let ((path (treemacs-button-get current-btn :path)))
+     `((defaults . (,(concat "Treemacs - " (treemacs--get-label-of current-btn))))
+       (treemacs-bookmark-path . ,path)
+       (handler . treemacs-bookmark--handler)
+       ,@(when (stringp path) `((filename . ,path)))))))
+
+(defun treemacs-bookmark--install-bookmark-function ()
+  "Install a `bookmark-make-record-function' in the current Treemacs buffer."
+  (setq-local bookmark-make-record-function #'treemacs-bookmark-make-record))
+
+(defun treemacs-bookmark--uninstall-bookmark-function ()
+  "Remote the `bookmark-make-record-function' from the current Treemacs buffer."
+  (kill-local-variable 'bookmark-make-record-function))
+
 (cl-macrolet
     ((def (name &rest extra &key root-face &allow-other-keys)
           `(treemacs-define-expandable-node ,name
@@ -344,13 +369,12 @@ BTN is the bookmark button."
 
 (define-minor-mode treemacs-bookmark-mode
   "Global minor mode for displaying bookmarks in Treemacs"
-  :global t
   :group 'treemacs-bookmark
-  ;; TODO
-  :init-value t
-  (cond
-   (treemacs-bookmark-mode)
-   (t)))
+  (unless (eq major-mode 'treemacs-mode)
+    (user-error "Cannot enable treemacs-bookmark-mode in a non-Treemacs buffer"))
+  (if treemacs-bookmark-mode
+      (treemacs-bookmark--install-bookmark-function)
+    (treemacs-bookmark--uninstall-bookmark-function)))
 
 (provide 'treemacs-bookmark)
 
