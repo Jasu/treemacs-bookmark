@@ -64,10 +64,10 @@ On failure, error is pulsed."
   (-when-let*
       ((path (treemacs-bookmark--get-bookmark-path))
        (project
-        (or (treemacs-is-path path :in-workspace)
+        (or (treemacs-is-path (file-truename path) :in-workspace)
             (treemacs-pulse-on-failure
                 "Bookmark '%s' is not in the Treemacs workspace." path))))
-    (treemacs-goto-file-node path project)
+    (treemacs-goto-file-node (file-truename path) project)
     (when (file-directory-p path)
       (let ((button (treemacs-current-button)))
         (unless (treemacs-is-node-expanded? button)
