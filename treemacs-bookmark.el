@@ -248,25 +248,30 @@ BTN is the bookmark button."
 (defvar treemacs-bookmark--icon-cache nil
   "Cache for Treemacs Bookmark icons.")
 
-(defsubst treemacs-bookmark--octicon (icon-name face)
+(defun treemacs-bookmark--octicon (icon-name face)
   "Get an Octicon by ICON-NAME as a Treemacs icon.  Use FACE to propertize the icon."
-  (let* ((cache-key (list icon-name face))
-         (cached (cdr (assoc cache-key treemacs-bookmark--icon-cache))))
-    (or cached
-        (let* ((face (list :family (all-the-icons-octicon-family) :inherit face))
-               (icon (all-the-icons-octicon icon-name :face face))
-               ;; Emacs does not provide a way to get string-width in pixels, except for
-               ;; already rendered text. Get the width of the glyph and multiple it by
-               ;; the :HEIGHT of the face.
-               (glyph (aref (font-get-glyphs (font-at 0 nil icon) 0 1 icon) 0))
-               (height (plist-get (get-char-property 0 'face icon) :height))
-               (icon-width (* height (aref glyph 4)))
-               (padding (* 0.5 (- treemacs--icon-size icon-width)))
-               (space-left (propertize " " 'display `((space :width (,(floor padding))))))
-               (space-right (propertize " " 'display `((space :width (,(ceiling padding))))))
-               (result (treemacs-as-icon (concat space-left icon space-right " "))))
-          (push (cons cache-key result) treemacs-bookmark--icon-cache)
-          result))))
+  (if window-system
+      (let* ((cache-key (list icon-name face))
+             (cached (cdr (assoc cache-key treemacs-bookmark--icon-cache))))
+        (or cached
+            (let* ((family (all-the-icons-octicon-family))
+                   (icon (cdr (assoc icon-name (all-the-icons-octicon-data))))
+                   (font (font-at 0 nil (propertize icon 'face `(:family ,family))))
+                   (font-height (-> font (font-info) (aref 3)))
+                   (font-height-2 (-> font (font-info) (aref 2)))
+                   (glyph-width (-> font (font-get-glyphs 0 1 icon) (aref 0) (aref 4)))
+                   (max-height (/ (float treemacs--icon-size) (float font-height)))
+                   (max-width  (/ (float treemacs--icon-size) (float glyph-width)))
+                   (height (floor (/ (* 100.0 (float font-height) (min max-height max-width)) font-height-2)))
+                   (padding (when (> max-width max-height)
+                              (* 0.5 (- treemacs--icon-size (* max-height (float glyph-width))))))
+                   (space-left (when padding (propertize " " 'display `(space :width (,(floor padding))))))
+                   (space-right (when padding (propertize " " 'display `(space :width (,(ceiling padding))))))
+                   (face `(:family ,family :height ,height :inherit ,face))
+                   (result (treemacs-as-icon (concat space-left (propertize icon 'face face 'font-lock-face face 'rear-nonsticky t) space-right " "))))
+              (push (cons cache-key result) treemacs-bookmark--icon-cache)
+              result)))
+    ""))
 
 (cl-macrolet
     ((def (name &rest extra &key root-face &allow-other-keys)
