@@ -34,28 +34,15 @@
 
 (defgroup treemacs-bookmark nil "Treemacs Bookmark" :group 'treemacs)
 
-(cl-macrolet
-    ((def (name doc)
-          `(defcustom ,name 'treemacs-visit-node-no-split ,doc
-             :type '(choice
-                     (const :tag "Visit in a horizontal split" treemacs-visit-node-horizontal-split)
-                     (const :tag "Visit in a vertical split" treemacs-visit-node-vertical-split)
-                     (const :tag "Visit without a split" treemacs-visit-node-no-split)
-                     (const :tag "Visit with Ace" treemacs-visit-node-ace)
-                     (const :tag "Visit with Ace in a horizontal split" treemacs-visit-node-ace-horizontal-split)
-                     (const :tag "Visit with Ace in a vertical split" treemacs-visit-node-ace-vertical-split)))))
-  (def treemacs-bookmark-default-file-visit-action
-       "Default action to visit a bookmark pointing to a regular file.")
-  (def treemacs-bookmark-default-directory-visit-action
-       "Default action to visit a bookmark pointing to a directory."))
-
 (defun treemacs-bookmark--get-bookmark-path ()
   "Get the path of the current bookmark node, NIL on failure.
 
 On failure, error is pulsed."
   (treemacs-with-current-button
    "Not on a Treemacs button"
-   (or (treemacs-button-get current-btn :bookmark-location)
+   (or (-some-> (treemacs-button-get current-btn :bookmark)
+                (bookmark-prop-get 'filename)
+                (file-truename))
        (treemacs-pulse-on-failure "Not on a Treemacs Bookmark"))))
 
 (defun treemacs-bookmark-goto-bookmark (&rest _)
@@ -64,7 +51,7 @@ On failure, error is pulsed."
   (-when-let*
       ((path (treemacs-bookmark--get-bookmark-path))
        (project
-        (or (treemacs-is-path (file-truename path) :in-workspace)
+        (or (treemacs-is-path path :in-workspace)
             (treemacs-pulse-on-failure
                 "Bookmark '%s' is not in the Treemacs workspace." path))))
     (treemacs-goto-file-node (file-truename path) project)
@@ -78,69 +65,18 @@ On failure, error is pulsed."
           (treemacs-previous-line 1))))
     (treemacs-pulse-on-success)))
 
-(defvar treemacs-bookmark--visit-actions
-  '(treemacs-visit-node-horizontal-split
-    treemacs-visit-node-vertical-split
-    treemacs-visit-node-no-split
-    treemacs-visit-node-ace
-    treemacs-visit-node-ace-horizontal-split
-    treemacs-visit-node-ace-vertical-split)
-  "List of actions to consider as visit actions when visiting a file.")
+(defun treemacs-bookmark-visit (btn)
+  "Jump to the bookmark node at BTN."
+  (bookmark-jump (treemacs-safe-button-get btn :bookmark)))
 
-(defun treemacs-bookmark--find-button-visit-action (button)
-  "Find the visit action defined for BUTTON in its current state."
-  (-some--> button
-            (treemacs-button-get it :state)
-            (list (alist-get it treemacs-RET-actions-config)
-                  (alist-get it treemacs-TAB-actions-config))
-            (-intersection it treemacs-bookmark--visit-actions)
-            (-first-item it)))
-
-(defun treemacs-bookmark-visit-bookmark (&optional arg)
-  "Visit the bookmark of the current button.
-Stay in current window with a prefix argument ARG."
-  (interactive "P")
-  ;; This function is a huge hack, and likely rather fragile - it temporarily
-  ;; makes the current button a file/dir button, and runs the action.
-  (treemacs-with-current-button
-   "Not on a Treemacs button"
-   (-when-let (path (treemacs-bookmark--get-bookmark-path))
-     (let* ((target-button (-some--> (treemacs-is-path path :in-workspace)
-                                     (save-excursion (treemacs-find-file-node path it))))
-            ;; Store previous values of our button
-            (old-path (treemacs-button-get current-btn :path))
-            (old-state (treemacs-button-get current-btn :state)))
-       (treemacs-with-writable-buffer
-        ;; HACK STARTS HERE
-        (unwind-protect
-            (let ((is-dir (file-directory-p path)))
-              ;; Make the current bookmark button appear as a file/directory button.
-              (treemacs-button-put current-btn :path path)
-              (treemacs-button-put current-btn :state (if is-dir 'dir-node-closed 'file-node-closed))
-              (funcall-interactively
-               (cond
-                ;; Primarily call the action of the button of the actual file/directory
-                ((treemacs-bookmark--find-button-visit-action target-button))
-                ;; If no button or the button does not have a visit action,
-                ;; use the configured defaults.
-                (is-dir treemacs-bookmark-default-directory-visit-action)
-                (t treemacs-bookmark-default-file-visit-action))
-               arg))
-          ;; Always restore the values of current button, even on error.
-          ;; Executing the action has likely focused another window - restoring
-          ;; the button properties has to be done with another buffer.
-          (treemacs-with-button-buffer current-btn
-            (treemacs-button-put current-btn :path old-path)
-            (treemacs-button-put current-btn :state old-state))))))))
-
-(defun treemacs-bookmark-goto-or-visit-bookmark (&optional arg)
-  "Go to the current bookmark Treemacs or visit the file if in workspace.
+(defun treemacs-bookmark-goto-or-visit (&optional arg)
+  "Go to the current bookmark in Treemacs or visit the file if in workspace.
 Stay in current window with a prefix argument ARG."
   (interactive "P")
   (-when-let (path (treemacs-bookmark--get-bookmark-path))
     (if (treemacs-is-path path :in-workspace)
         (treemacs-bookmark-goto-bookmark)
-      (treemacs-bookmark-visit-bookmark arg))))
+      (treemacs-RET-action arg))))
 
 (cl-macrolet
     ((def (name default doc)
@@ -155,52 +91,50 @@ Stay in current window with a prefix argument ARG."
   (def treemacs-bookmark-directory-position 'top
        "Position of the per-directory bookmarks node."))
 
-(cl-macrolet
-    ((def (name default doc)
-          `(defcustom ,name ,default ,doc
-             :type '(choice (const :tag "Visit the bookmark" 'treemacs-bookmark-visit-bookmark)
-                            (const :tag "Go to the bookmark in Treemacs" 'treemacs-bookmark-goto-bookmark)
-                            (const :tag "Go to the bookmark in Treemacs or visit the file" 'treemacs-bookmark-goto-or-visit-bookmark)))))
-  (def treemacs-bookmark-ret-action 'treemacs-bookmark-visit-bookmark
-       "Action to perform when RETURN is pressed on a bookmark.")
-  (def treemacs-bookmark-tab-action 'treemacs-bookmark-goto-bookmark
-       "Action to perform when TAB is pressed on a bookmark.")
-  (def treemacs-bookmark-mouse1-action 'treemacs-bookmark-goto-bookmark
-       "Action to perform when a bookmark is clicked."))
-
-(defface treemacs-bookmark-top-level-face
+(defface treemacs-bookmark-top-level
   '((t :inherit treemacs-root-face
-       :foreground "goldenrod"))
+       :foreground "deep sky blue"))
   "Face for the top-level bookmarks button.")
 
-(defface treemacs-bookmark-project-face
+(defface treemacs-bookmark-project
   '((t :inherit treemacs-dir-face
        :foreground "deep sky blue"))
   "Face for the per-project bookmarks button.")
 
-(defface treemacs-bookmark-dir-face
-  '((t :inherit treemacs-project-face))
+(defface treemacs-bookmark-dir
+  '((t :inherit treemacs-dir-face
+       :foreground "deep sky blue"))
   "Face for the per-directory bookmarks button.")
 
-(defface treemacs-bookmark-in-workspace-face
+(defface treemacs-bookmark-man-page
+  '((t :inherit treemacs-bookmark-in-workspace
+       :foreground "cyan"))
+  "Face for man page bookmarks.")
+
+(defface treemacs-bookmark-info
+  '((t :inherit treemacs-bookmark-in-workspace
+       :foreground "green"))
+  "Face for Info page bookmarks.")
+
+(defface treemacs-bookmark-in-workspace
   '((t :inherit treemacs-file-face))
   "Face for bookmarks which are available in Treemacs.")
 
-(defface treemacs-bookmark-not-in-workspace-face
-  '((t :inherit treemacs-bookmark-in-project-face
+(defface treemacs-bookmark-not-in-workspace
+  '((t :inherit treemacs-bookmark-in-workspace
        :foreground "dark orange"))
   "Face for bookmarks which are not available in Treemacs.")
 
-(defface treemacs-bookmark-non-existent-face
-  '((t :inherit treemacs-bookmark-in-project-face
+(defface treemacs-bookmark-non-existent
+  '((t :inherit treemacs-bookmark-in-workspace
        :foreground "red"
        :weight bold))
   "Face for bookmarks which do not exist on disk.")
 
 (treemacs-define-leaf-node treemacs-bookmark-leaf 'dynamic-icon
-  :tab-action treemacs-bookmark-tab-action
-  :ret-action treemacs-bookmark-ret-action
-  :mouse1-action treemacs-bookmark-mouse1-action)
+                           :tab-action #'treemacs-bookmark-goto-or-visit
+                           :visit-action #'treemacs-bookmark-visit
+                           :mouse1-action #'treemacs-TAB-action)
 
 (defun treemacs-bookmark--top-level-bookmarks ()
   ; checkdoc-params: (checkdoc-symbol-words "top-level")
@@ -308,45 +242,55 @@ BTN is the bookmark button."
              :ret-action #'treemacs-TAB-action
 
              :render-action
-             (let* ((bookmark-path (bookmark-location item))
-                    (exists (file-exists-p bookmark-path))
-                    (is-dir (and exists (file-directory-p bookmark-path)))
-                    (in-workspace (treemacs-is-path bookmark-path :in-workspace))
+             (let* ((bookmark-path (bookmark-prop-get item 'filename))
+                    (exists (when bookmark-path (file-exists-p bookmark-path)))
+                    (is-dir (when exists (file-directory-p bookmark-path)))
+                    (in-workspace (when exists (treemacs-is-path bookmark-path :in-workspace)))
+                    (bookmark-type
+                     (cond ((bookmark-prop-get item 'man-args) 'man-page)
+                           ((bookmark-prop-get item 'info-node) 'info-page)
+                           ((not exists) 'file-non-existent)
+                           ((and is-dir in-workspace) 'directory-in-workspace)
+                           (is-dir 'directory-not-in-workspace)
+                           (in-workspace 'file-in-workspace)
+                           (t 'file-not-in-workspace)))
                     (bookmark-name (car item)))
                (treemacs-render-node
-                :icon (cond
-                       ((not exists) treemacs-icon-error)
-                       ((and is-dir in-workspace) treemacs-icon-open)
-                       (is-dir treemacs-icon-closed)
-                       (t (treemacs-icon-for-file bookmark-path)))
+                :icon (cl-case bookmark-type
+                        (man-page treemacs-icon-info)
+                        (info-page treemacs-icon-info)
+                        (file-non-existent treemacs-icon-error)
+                        (directory-in-workspace treemacs-icon-open)
+                        (directory-not-in-workspace treemacs-icon-closed)
+                        (t (treemacs-icon-for-file bookmark-path)))
                 :state treemacs-treemacs-bookmark-leaf-state
                 :label-form bookmark-name
                 :key-form bookmark-name
-                :more-properties (:bookmark-location bookmark-path)
-                :face (cond
-                       ((not exists)
-                        'treemacs-bookmark-non-existent-face)
-                       (in-workspace
-                        'treemacs-bookmark-in-workspace-face)
-                       (t
-                        'treemacs-bookmark-not-in-workspace-face))))
+                :more-properties (:bookmark item)
+                :face (cl-case bookmark-type
+                        (man-page 'treemacs-bookmark-man-page)
+                        (info-page 'treemacs-bookmark-info)
+                        (file-non-existent 'treemacs-bookmark-non-existent)
+                        ((directory-in-workspace file-in-workspace) 'treemacs-bookmark-in-workspace)
+                        ((directory-not-in-workspace file-not-in-workspace)
+                         'treemacs-bookmark-not-in-workspace))))
              ,@extra)))
   (def treemacs-bookmark-top-level
        :query-function (treemacs-bookmark--top-level-bookmarks)
        :top-level-marker t
-       :root-face 'treemacs-bookmark-top-level-face
+       :root-face 'treemacs-bookmark-top-level
        :root-key-form 'Treemacs-Bookmark-Top-Level)
 
   (def treemacs-bookmark-project
        :query-function (treemacs-bookmark--project-bookmarks btn)
        :root-marker t
-       :root-face 'treemacs-bookmark-project-face
+       :root-face 'treemacs-bookmark-project
        :root-key-form 'Treemacs-Bookmark-Project)
 
   (def treemacs-bookmark-directory
        :query-function (treemacs-bookmark--directory-bookmarks btn)
        :root-marker t
-       :root-face 'treemacs-bookmark-dir-face
+       :root-face 'treemacs-bookmark-dir
        :root-key-form 'Treemacs-Bookmark-Directory))
 
 (when treemacs-bookmark-top-level-position
