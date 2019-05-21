@@ -293,23 +293,20 @@ BTN is the bookmark button."
        :root-face 'treemacs-bookmark-dir
        :root-key-form 'Treemacs-Bookmark-Directory))
 
-(when treemacs-bookmark-top-level-position
-  (treemacs-define-top-level-extension
-   :extension #'treemacs-TREEMACS-BOOKMARK-TOP-LEVEL-extension
-   :predicate #'treemacs-bookmark--top-level-predicate
-   :position treemacs-bookmark-top-level-position))
+(treemacs-define-top-level-extension
+ :extension #'treemacs-TREEMACS-BOOKMARK-TOP-LEVEL-extension
+ :predicate #'treemacs-bookmark--top-level-predicate
+ :position treemacs-bookmark-top-level-position)
 
-(when treemacs-bookmark-project-position
-  (treemacs-define-project-extension
-   :extension #'treemacs-TREEMACS-BOOKMARK-PROJECT-extension
-   :predicate #'treemacs-bookmark--project-predicate
-   :position treemacs-bookmark-project-position))
+(treemacs-define-project-extension
+ :extension #'treemacs-TREEMACS-BOOKMARK-PROJECT-extension
+ :predicate #'treemacs-bookmark--project-predicate
+ :position treemacs-bookmark-project-position)
 
-(when treemacs-bookmark-directory-position
-  (treemacs-define-directory-extension
-   :extension #'treemacs-TREEMACS-BOOKMARK-DIRECTORY-extension
-   :predicate #'treemacs-bookmark--directory-predicate
-   :position treemacs-bookmark-directory-position))
+(treemacs-define-directory-extension
+ :extension #'treemacs-TREEMACS-BOOKMARK-DIRECTORY-extension
+ :predicate #'treemacs-bookmark--directory-predicate
+ :position treemacs-bookmark-directory-position)
 
 (define-minor-mode treemacs-bookmark-mode
   "Global minor mode for displaying bookmarks in Treemacs"
