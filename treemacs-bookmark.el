@@ -150,13 +150,19 @@ Stay in current window with a prefix argument ARG."
 (defun treemacs-bookmark--project-predicate (project)
   "Return non-nil if any bookmark exists in PROJECT."
   (and treemacs-bookmark-project-position
-       (--any? (treemacs-is-path (bookmark-location it) :in-project project)
+       (--any? (-some->
+                (bookmark-prop-get it 'filename)
+                (file-truename)
+                (treemacs-is-path  :in-project project))
                bookmark-alist)))
 
 (defun treemacs-bookmark--directory-predicate (directory)
   "Return non-nil if any bookmark exists in DIRECTORY."
   (and treemacs-bookmark-directory-position
-       (--any? (treemacs-is-path directory :parent-of (bookmark-location it))
+       (--any? (-some->>
+                (bookmark-prop-get it 'filename)
+                (file-truename)
+                (treemacs-is-path directory :parent-of))
                bookmark-alist)))
 
 (defun treemacs-bookmark--project-bookmarks (btn)
@@ -164,20 +170,24 @@ Stay in current window with a prefix argument ARG."
 
 BTN is the bookmark button."
   (let ((project (treemacs-project-of-node btn)))
-    (unless project
-      (error "Tried to get Treemacs Bookmark project bookmarks outside a project"))
-    (--filter (treemacs-is-path (bookmark-location it) :in-project project)
-              bookmark-alist)))
+    (--filter
+     (-some->
+      (bookmark-prop-get it 'filename)
+      (file-truename)
+      (treemacs-is-path :in-project project))
+     bookmark-alist)))
 
 (defun treemacs-bookmark--directory-bookmarks (btn)
   "Get the list of bookmarks to show for the current project.
 
 BTN is the bookmark button."
   (let ((directory (car-safe (treemacs-safe-button-get btn :path))))
-    (unless directory
-      (error "Tried to get Treemacs Bookmark directory bookmarks outside a directory"))
-    (--filter (treemacs-is-path directory :parent-of (bookmark-location it))
-              bookmark-alist)))
+    (--filter
+     (-some->>
+      (bookmark-prop-get it 'filename)
+      (file-truename)
+      (treemacs-is-path directory :parent-of))
+     bookmark-alist)))
 
 (defvar treemacs-bookmark--icon-cache nil
   "Cache for Treemacs Bookmark icons.")
