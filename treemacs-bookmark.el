@@ -52,7 +52,7 @@ On failure, error is pulsed."
                 (file-truename))
        (treemacs-pulse-on-failure "Not on a Treemacs Bookmark"))))
 
-(defun treemacs-bookmark-goto-bookmark (&rest _)
+(defun treemacs-bookmark-goto-bookmark ()
   "Go to the bookmark of the current button in Treemacs."
   (interactive)
   (-when-let*
