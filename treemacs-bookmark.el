@@ -5,7 +5,7 @@
 ;; URL: https://github.com/jasu/treemacs-bookmark
 ;; Author: Jasper Mattsson <jasu@njomotys.info>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "26.1") (treemacs "2.5") (dash "2.11.0") (all-the-icons "3.2.0"))
+;; Package-Requires: ((emacs "26.1") (treemacs "2.5") (dash "2.11.0"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -28,11 +28,18 @@
 ;;; Code:
 
 (require 'dash)
+(require 's)
 (require 'treemacs)
 (require 'treemacs-extensions)
-(require 'all-the-icons)
+(require 'bookmark)
 
 (defgroup treemacs-bookmark nil "Treemacs Bookmark" :group 'treemacs)
+
+(defvar treemacs-bookmark--current-bookmarks nil
+  "List of bookmark paths that belong to some Treemacs project.")
+
+(defconst treemacs-bookmark--directory (file-name-directory load-file-name)
+  "Directory where treemacs-bookmark.el resides.")
 
 (defun treemacs-bookmark--get-bookmark-path ()
   "Get the path of the current bookmark node, NIL on failure.
@@ -189,64 +196,101 @@ BTN is the bookmark button."
       (treemacs-is-path directory :parent-of))
      bookmark-alist)))
 
-(defvar treemacs-bookmark--icon-cache nil
-  "Cache for Treemacs Bookmark icons.")
+(defsubst treemacs-bookmark--get-project-roots ()
+  "Get the list of Treemacs project root paths."
+  (->> (treemacs-current-workspace)
+       (treemacs-workspace->projects)
+       (--map (concat (treemacs-project->path it) "/"))))
 
-(defun treemacs-bookmark--octicon (icon-name face)
-  "Get an Octicon by ICON-NAME as a Treemacs icon.  Use FACE to propertize the icon."
-  (if window-system
-      (let* ((cache-key (list icon-name face))
-             (cached (cdr (assoc cache-key treemacs-bookmark--icon-cache))))
-        (or cached
-            (let* ((family (all-the-icons-octicon-family))
-                   (icon (cdr (assoc icon-name (all-the-icons-octicon-data))))
-                   (font (font-at 0 nil (propertize icon 'face `(:family ,family))))
-                   (font-height (-> font (font-info) (aref 3)))
-                   (font-height-2 (-> font (font-info) (aref 2)))
-                   (glyph-width (-> font (font-get-glyphs 0 1 icon) (aref 0) (aref 4)))
-                   (max-height (/ (float treemacs--icon-size) (float font-height)))
-                   (max-width  (/ (float treemacs--icon-size) (float glyph-width)))
-                   (height (floor (/ (* 100.0 (float font-height) (min max-height max-width)) font-height-2)))
-                   (padding (when (> max-width max-height)
-                              (* 0.5 (- treemacs--icon-size (* max-height (float glyph-width))))))
-                   (space-left (when padding (propertize " " 'display `(space :width (,(floor padding))))))
-                   (space-right (when padding (propertize " " 'display `(space :width (,(ceiling padding))))))
-                   (face `(:family ,family :height ,height :inherit ,face))
-                   (result (treemacs-as-icon (concat space-left (propertize icon 'face face 'font-lock-face face 'rear-nonsticky t) space-right " "))))
-              (push (cons cache-key result) treemacs-bookmark--icon-cache)
-              result)))
-    ""))
+(defsubst treemacs-bookmark--get-project-by-root (root-path)
+  "Get the Treemacs project by ROOT-PATH."
+  (--> (treemacs-current-workspace)
+       (treemacs-workspace->projects it)
+       (--first (string= root-path (treemacs-project->path it)) it)))
 
-(defun treemacs-bookmark--handler (record)
-  "Open Treemacs into a bookmark RECORD."
-  (unless (window-live-p (treemacs-get-local-window))
-    (treemacs))
-  (select-window (treemacs-get-local-window))
-  (treemacs-goto-node (bookmark-prop-get record 'treemacs-bookmark-path)))
+(defun treemacs-bookmark--get-lca-set (paths)
+  "Get the set of lowest common ancestors of PATHS.
 
-(defun treemacs-bookmark-make-record (&rest _)
-  "Make a bookmark record for the current Treemacs button."
-  (treemacs-with-current-button
-   "Not on a button."
-   (let ((path (treemacs-button-get current-btn :path)))
-     `((defaults . (,(concat "Treemacs - " (treemacs--get-label-of current-btn))))
-       (treemacs-bookmark-path . ,path)
-       (handler . treemacs-bookmark--handler)
-       ,@(when (stringp path) `((filename . ,path)))))))
+E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
+'(\"/project1/a/b\" \"/project2\")."
+  (let* ((project-roots (treemacs-bookmark--get-project-roots))
+         ;; Remove paths that don't belong to any Treemacs project.
+         (paths (--filter
+                 (let ((path it))
+                   (--some (s-starts-with-p it path) project-roots))
+                 paths))
+         (paths (sort paths #'string>)))
+    (cl-loop for paths-tail on paths
+             for current-path = (car paths-tail) then (car paths-tail)
+             unless (--some (s-starts-with-p it current-path) (cdr paths-tail))
+             collect current-path)))
 
-(defun treemacs-bookmark--install-bookmark-function ()
-  "Install a `bookmark-make-record-function' in the current Treemacs buffer."
-  (setq-local bookmark-make-record-function #'treemacs-bookmark-make-record))
+(defun treemacs-bookmark--update-visible-node (path)
+  "Update Treemcs node by PATH if it's visible."
+  (treemacs-save-position
+   (-when-let (btn (treemacs-find-visible-node path))
+     (when (treemacs-is-node-expanded? btn)
+       (goto-char btn)
+       (treemacs-toggle-node)
+       (treemacs-toggle-node)))))
 
-(defun treemacs-bookmark--uninstall-bookmark-function ()
-  "Remote the `bookmark-make-record-function' from the current Treemacs buffer."
-  (kill-local-variable 'bookmark-make-record-function))
+(defun treemacs-bookmark--get-paths (path project-roots)
+  "Gets PATH and its parents up to the Treemacs project root in PROJECT-ROOTS."
+  (-when-let (project-root (--find (s-starts-with-p it path) project-roots))
+    (let ((result (list path)))
+      (while (and (not (string= path project-root))
+                  (not (string= path "/")))
+        (setq path (file-name-directory (s-chop-suffix "/" path)))
+        (message path)
+        (push path result))
+      result)))
+
+(defun treemacs-bookmark--update (&rest _)
+  "Update Treemacs after changes in `bookmark-alist'.
+
+Also update `treemacs-bookmark--bookmark-alist-copy'.  Arguments are ignored, so
+that this function can safely be used as advice."
+  ;; Update the root-level bookmark node
+  (with-current-buffer (treemacs-get-local-buffer)
+    (treemacs-update-node '(:custom Treemacs-Bookmark-Top-Level))
+    (let*
+        ;; Get a list of bookmark paths that belong to a Treemacs project.
+        ((project-roots (treemacs-bookmark--get-project-roots))
+         (bookmarks (->>
+                     (--map (-when-let (path (-some-> (bookmark-prop-get it 'filename) (file-truename)))
+                              (when (--some (s-starts-with-p it path) project-roots)
+                                (s-chop-suffix "/" path)))
+                            bookmark-alist)
+                     (seq-filter #'identity)))
+         ;; Compute the sets of directories which had nodes added, but did not have
+         ;; any previously and that had nodes previously but no longer have any.
+         ;; These directories need to be updated in Treemacs completely, since the
+         ;; directory/project extension node predicate is evaluated only when
+         ;; updating the parent directory.
+         (old-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) treemacs-bookmark--current-bookmarks))
+         (new-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) bookmarks))
+         (fully-updated-directories (treemacs-bookmark--get-lca-set
+                                     (nconc (-difference new-directories old-directories)
+                                            (-difference old-directories new-directories)))))
+
+      ;; Update directories that now should or should not have the Bookmarks node at all.
+      (--each fully-updated-directories (treemacs-update-node (s-chop-suffix "/" it)))
+
+      ;; Update Bookmarks nodes with changes.
+      (dolist (path bookmarks)
+        (let ((dir (file-name-directory path)))
+          (unless (--some (s-starts-with-p it dir) fully-updated-directories)
+            (if (member dir project-roots)
+                (treemacs-update-node (list (treemacs-bookmark--get-project-by-root (s-chop-suffix "/" dir)) 'Treemacs-Bookmark-Project))
+              (treemacs-update-node (list (s-chop-suffix "/" dir) 'Treemacs-Bookmark-Directory))))))
+
+      (setq treemacs-bookmark--current-bookmarks bookmarks))))
 
 (cl-macrolet
     ((def (name &rest extra &key root-face &allow-other-keys)
           `(treemacs-define-expandable-node ,name
-             :icon-open (treemacs-bookmark--octicon "bookmark" ,root-face)
-             :icon-closed (treemacs-bookmark--octicon "bookmark" ,root-face)
+             :icon-open-form (treemacs-bookmark--icon)
+             :icon-closed-form (treemacs-bookmark--icon)
 
              :root-label "Bookmarks"
              :ret-action #'treemacs-TAB-action
@@ -270,8 +314,8 @@ BTN is the bookmark button."
                         (man-page treemacs-icon-info)
                         (info-page treemacs-icon-info)
                         (file-non-existent treemacs-icon-error)
-                        (directory-in-workspace treemacs-icon-open)
-                        (directory-not-in-workspace treemacs-icon-closed)
+                        (directory-in-workspace treemacs-icon-dir-open)
+                        (directory-not-in-workspace treemacs-icon-dir-closed)
                         (t (treemacs-icon-for-file bookmark-path)))
                 :state treemacs-treemacs-bookmark-leaf-state
                 :label-form bookmark-name
@@ -292,13 +336,13 @@ BTN is the bookmark button."
        :root-key-form 'Treemacs-Bookmark-Top-Level)
 
   (def treemacs-bookmark-project
-       :query-function (treemacs-bookmark--project-bookmarks btn)
+       :query-function (treemacs-bookmark--project-bookmarks node)
        :root-marker t
        :root-face 'treemacs-bookmark-project
        :root-key-form 'Treemacs-Bookmark-Project)
 
   (def treemacs-bookmark-directory
-       :query-function (treemacs-bookmark--directory-bookmarks btn)
+       :query-function (treemacs-bookmark--directory-bookmarks node)
        :root-marker t
        :root-face 'treemacs-bookmark-dir
        :root-key-form 'Treemacs-Bookmark-Directory))
@@ -318,14 +362,30 @@ BTN is the bookmark button."
  :predicate #'treemacs-bookmark--directory-predicate
  :position treemacs-bookmark-directory-position)
 
+(defun treemacs-bookmark--icon ()
+  "Get the icon for a bookmark node."
+  (or (treemacs-get-icon-value 'bookmark)
+      (progn
+        (treemacs-create-icon
+         :file "bookmark.png"
+         :icons-dir treemacs-bookmark--directory
+         :extensions (bookmark))
+        (treemacs-get-icon-value 'bookmark))
+      ""))
+
+;;;###autoload
 (define-minor-mode treemacs-bookmark-mode
   "Global minor mode for displaying bookmarks in Treemacs"
   :group 'treemacs-bookmark
   (unless (eq major-mode 'treemacs-mode)
     (user-error "Cannot enable treemacs-bookmark-mode in a non-Treemacs buffer"))
-  (if treemacs-bookmark-mode
-      (treemacs-bookmark--install-bookmark-function)
-    (treemacs-bookmark--uninstall-bookmark-function)))
+  (cond (treemacs-bookmark-mode
+         ;; Bookmark provides no hook for updating the bookmark list, so advice
+         ;; the most ridiculously named function in Emacs instead and hope the
+         ;; name won't change.
+         (advice-add 'bookmark-bmenu-surreptitiously-rebuild-list :after #'treemacs-bookmark--update))
+        (t
+         (advice-remove 'bookmark-bmenu-surreptitiously-rebuild-list #'treemacs-bookmark--update))))
 
 (provide 'treemacs-bookmark)
 
