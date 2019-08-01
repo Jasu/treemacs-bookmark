@@ -72,6 +72,25 @@ On failure, error is pulsed."
           (treemacs-previous-line 1))))
     (treemacs-pulse-on-success)))
 
+(defun treemacs-bookmark-delete (&rest _)
+  "Delete the currently selected bookmark in Treemacs."
+  (interactive)
+  (treemacs-with-current-button
+   "Not on a Treemacs button"
+   (treemacs-unless-let (bookmark (treemacs-button-get current-btn :bookmark))
+       (treemacs-pulse-on-failure "Not on a bookmark node")
+     (when (yes-or-no-p (concat "Delete bookmark " (bookmark-name-from-full-record bookmark) "? "))
+       (bookmark-delete bookmark)))))
+
+(defun treemacs-bookmark-rename (&rest _)
+  "Rename the currently selected bookmark in Treemacs."
+  (interactive)
+  (treemacs-with-current-button
+   "Not on a Treemacs button"
+   (treemacs-unless-let (bookmark (treemacs-button-get current-btn :bookmark))
+       (treemacs-pulse-on-failure "Not on a bookmark node")
+     (bookmark-rename bookmark))))
+
 (defun treemacs-bookmark-visit (btn)
   "Jump to the bookmark node at BTN."
   (bookmark-jump (treemacs-safe-button-get btn :bookmark)))
@@ -141,7 +160,10 @@ Stay in current window with a prefix argument ARG."
 (treemacs-define-leaf-node treemacs-bookmark-leaf 'dynamic-icon
                            :tab-action #'treemacs-bookmark-goto-or-visit
                            :visit-action #'treemacs-bookmark-visit
-                           :mouse1-action #'treemacs-TAB-action)
+                           :mouse1-action #'treemacs-TAB-action
+                           ;; :delete-action #'treemacs-bookmark-delete
+                           ;; :rename-action #'treemacs-bookmark-rename
+                           )
 
 (defun treemacs-bookmark--top-level-bookmarks ()
   ; checkdoc-params: (checkdoc-symbol-words "top-level")
@@ -310,24 +332,22 @@ that this function can safely be used as advice."
                            (t 'file-not-in-workspace)))
                     (bookmark-name (car item)))
                (treemacs-render-node
-                :icon (cl-case bookmark-type
-                        (man-page treemacs-icon-info)
-                        (info-page treemacs-icon-info)
-                        (file-non-existent treemacs-icon-error)
-                        (directory-in-workspace treemacs-icon-dir-open)
-                        (directory-not-in-workspace treemacs-icon-dir-closed)
-                        (t (treemacs-icon-for-file bookmark-path)))
+                :icon (pcase bookmark-type
+                        ((or 'man-page 'info-page) (treemacs-get-icon-value 'info))
+                        ('file-non-existent (treemacs-get-icon-value 'error))
+                        ('directory-in-workspace (treemacs-get-icon-value 'dir-open))
+                        ('directory-not-in-workspace (treemacs-get-icon-value 'dir-closed))
+                        (_ (treemacs-icon-for-file bookmark-path)))
                 :state treemacs-treemacs-bookmark-leaf-state
                 :label-form bookmark-name
                 :key-form bookmark-name
                 :more-properties (:bookmark item)
-                :face (cl-case bookmark-type
-                        (man-page 'treemacs-bookmark-man-page)
-                        (info-page 'treemacs-bookmark-info)
-                        (file-non-existent 'treemacs-bookmark-non-existent)
-                        ((directory-in-workspace file-in-workspace) 'treemacs-bookmark-in-workspace)
-                        ((directory-not-in-workspace file-not-in-workspace)
-                         'treemacs-bookmark-not-in-workspace))))
+                :face (pcase bookmark-type
+                        ('man-page 'treemacs-bookmark-man-page)
+                        ('info-page 'treemacs-bookmark-info)
+                        ('file-non-existent 'treemacs-bookmark-non-existent)
+                        ((or 'directory-in-workspace 'file-in-workspace) 'treemacs-bookmark-in-workspace)
+                        ((or 'directory-not-in-workspace 'file-not-in-workspace) 'treemacs-bookmark-not-in-workspace))))
              ,@extra)))
   (def treemacs-bookmark-top-level
        :query-function (treemacs-bookmark--top-level-bookmarks)
