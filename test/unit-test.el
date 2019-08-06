@@ -1,4 +1,4 @@
-;;; treemacs-bookmark-test.el --- Tests for treemacs-bookmark -*- lexical-binding: t -*-
+;;; unit-test.el --- Tests for treemacs-bookmark -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2019 Jasper Mattsson
 
