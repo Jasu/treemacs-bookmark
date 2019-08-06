@@ -186,7 +186,7 @@ Stay in the current window with a prefix argument ARG."
   "Get the list of bookmarks to show for the top-level bookmark list."
   bookmark-alist)
 
-(defun treemacs-bookmark--top-level-predicate (_)
+(defun treemacs-bookmark--top-level-predicate ()
                                         ; checkdoc-params: (checkdoc-symbol-words "top-level")
   "Return non-nil if top-level bookmarks should be visible."
   (and (bound-and-true-p treemacs-bookmark-mode)
@@ -288,7 +288,7 @@ Also update `treemacs-bookmark--bookmark-alist-copy'.  Arguments are ignored, so
 that this function can safely be used as advice."
   ;; Update the root-level bookmark node
   (with-current-buffer (treemacs-get-local-buffer)
-    (treemacs-update-node '(:custom Treemacs-Bookmark-Top-Level))
+    (treemacs-update-node '(:custom Treemacs-Bookmark-Top-Level-Variadic Treemacs-Bookmark-Top-Level))
     (let*
         ;; Get a list of bookmark paths that belong to a Treemacs project.
         ((project-roots (treemacs-bookmark--get-project-roots))
@@ -374,12 +374,6 @@ that this function can safely be used as advice."
                         ('info-page 'treemacs-bookmark-info)
                         ('other 'treemacs-bookmark-other))))
              ,@extra)))
-  (def treemacs-bookmark-top-level
-       :query-function (treemacs-bookmark--top-level-bookmarks)
-       :top-level-marker t
-       :root-face 'treemacs-bookmark-top-level
-       :root-key-form 'Treemacs-Bookmark-Top-Level)
-
   (def treemacs-bookmark-project
        :query-function (treemacs-bookmark--project-bookmarks node)
        :root-marker t
@@ -390,11 +384,31 @@ that this function can safely be used as advice."
        :query-function (treemacs-bookmark--directory-bookmarks node)
        :root-marker t
        :root-face 'treemacs-bookmark-dir
-       :root-key-form 'Treemacs-Bookmark-Directory))
+       :root-key-form 'Treemacs-Bookmark-Directory)
+
+  (def treemacs-bookmark-top-level
+       :query-function (treemacs-bookmark--top-level-bookmarks)
+       :top-level-marker t
+       :root-face 'treemacs-bookmark-top-level
+       :root-key-form 'Treemacs-Bookmark-Top-Level))
+
+
+;; The top-level node is defined as a variadic node, since normal top-level
+;; nodes cannot be displayed or hidden.
+(treemacs-define-variadic-node treemacs-bookmark-top-level-variadic
+  :root-key-form 'Treemacs-Bookmark-Top-Level-Variadic
+  :query-function (when (treemacs-bookmark--top-level-predicate) '(t))
+  :render-action (progn
+                   (ignore item)
+                   (treemacs-render-node
+                    :icon (treemacs-bookmark--icon)
+                    :state treemacs-treemacs-bookmark-top-level-closed-state
+                    :label-form "Bookmarks"
+                    :key-form 'Treemacs-Bookmark-Top-Level
+                    :face 'treemacs-bookmark-top-level)))
 
 (treemacs-define-top-level-extension
- :extension #'treemacs-TREEMACS-BOOKMARK-TOP-LEVEL-extension
- :predicate #'treemacs-bookmark--top-level-predicate
+ :extension #'treemacs-TREEMACS-BOOKMARK-TOP-LEVEL-VARIADIC-extension
  :position treemacs-bookmark-top-level-position)
 
 (treemacs-define-project-extension
