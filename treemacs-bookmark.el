@@ -5,7 +5,7 @@
 ;; URL: https://github.com/jasu/treemacs-bookmark
 ;; Author: Jasper Mattsson <jasu@njomotys.info>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "26.1") (treemacs "2.5") (dash "2.11.0"))
+;; Package-Requires: ((emacs "26.1") (treemacs "2.5") (dash "2.11.0") (s "1.10.0"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -179,20 +179,18 @@ Stay in current window with a prefix argument ARG."
 (defun treemacs-bookmark--project-predicate (project)
   "Return non-nil if any bookmark exists in PROJECT."
   (and treemacs-bookmark-project-position
-       (--any? (-some->
-                (bookmark-prop-get it 'filename)
-                (file-truename)
-                (treemacs-is-path  :in-project project))
-               bookmark-alist)))
+       (--any (-some-->
+               (bookmark-prop-get it 'filename)
+               (treemacs-is-path (file-truename it) :in-project project))
+              bookmark-alist)))
 
 (defun treemacs-bookmark--directory-predicate (directory)
   "Return non-nil if any bookmark exists in DIRECTORY."
   (and treemacs-bookmark-directory-position
-       (--any? (-some->>
-                (bookmark-prop-get it 'filename)
-                (file-truename)
-                (treemacs-is-path directory :parent-of))
-               bookmark-alist)))
+       (--any (-some-->
+               (bookmark-prop-get it 'filename)
+               (treemacs-is-path directory :parent-of (file-truename it)))
+              bookmark-alist)))
 
 (defun treemacs-bookmark--project-bookmarks (btn)
   "Get the list of bookmarks to show for the current project.
@@ -200,10 +198,9 @@ Stay in current window with a prefix argument ARG."
 BTN is the bookmark button."
   (let ((project (treemacs-project-of-node btn)))
     (--filter
-     (-some->
+     (-some-->
       (bookmark-prop-get it 'filename)
-      (file-truename)
-      (treemacs-is-path :in-project project))
+      (treemacs-is-path (file-truename it) :in-project project))
      bookmark-alist)))
 
 (defun treemacs-bookmark--directory-bookmarks (btn)
@@ -218,17 +215,20 @@ BTN is the bookmark button."
       (treemacs-is-path directory :parent-of))
      bookmark-alist)))
 
-(defsubst treemacs-bookmark--get-project-roots ()
+(define-inline treemacs-bookmark--get-project-roots ()
   "Get the list of Treemacs project root paths."
-  (->> (treemacs-current-workspace)
-       (treemacs-workspace->projects)
-       (--map (concat (treemacs-project->path it) "/"))))
+  (inline-quote
+   (->> (treemacs-current-workspace)
+        (treemacs-workspace->projects)
+        (--map (concat (treemacs-project->path it) "/")))))
 
-(defsubst treemacs-bookmark--get-project-by-root (root-path)
+(define-inline treemacs-bookmark--get-project-by-root (root-path)
   "Get the Treemacs project by ROOT-PATH."
-  (--> (treemacs-current-workspace)
-       (treemacs-workspace->projects it)
-       (--first (string= root-path (treemacs-project->path it)) it)))
+  (inline-letevals (root-path)
+    (inline-quote
+     (--> (treemacs-current-workspace)
+          (treemacs-workspace->projects it)
+          (--first (string= ,root-path (treemacs-project->path it)) it)))))
 
 (defun treemacs-bookmark--get-lca-set (paths)
   "Get the set of lowest common ancestors of PATHS.
@@ -319,15 +319,16 @@ that this function can safely be used as advice."
 
              :render-action
              (let* ((bookmark-path (bookmark-prop-get item 'filename))
-                    (exists (when bookmark-path (file-exists-p bookmark-path)))
+                    (exists (when bookmark-path
+                              (or (file-remote-p bookmark-path)
+                                  (file-exists-p bookmark-path))))
                     (is-dir (when exists (file-directory-p bookmark-path)))
                     (in-workspace (when exists (treemacs-is-path bookmark-path :in-workspace)))
                     (bookmark-type
                      (cond ((bookmark-prop-get item 'man-args) 'man-page)
                            ((bookmark-prop-get item 'info-node) 'info-page)
                            ((not exists) 'file-non-existent)
-                           ((and is-dir in-workspace) 'directory-in-workspace)
-                           (is-dir 'directory-not-in-workspace)
+                           (is-dir (if in-workspace 'directory-in-workspace 'directory-not-in-workspace))
                            (in-workspace 'file-in-workspace)
                            (t 'file-not-in-workspace)))
                     (bookmark-name (car item)))
