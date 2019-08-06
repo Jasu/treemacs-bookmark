@@ -66,7 +66,9 @@
 
 (describe "treemacs-bookmark-mode"
   (it "initializes cleanly"
-    (with-treemacs)))
+    (with-treemacs))
+  (it "advises bookmark-bmenu-surreptitiously-rebuild-list"
+    (expect (advice-member-p #'treemacs-bookmark--update 'bookmark-bmenu-surreptitiously-rebuild-list) :to-be-truthy)))
 
 (provide 'functional-test)
 
