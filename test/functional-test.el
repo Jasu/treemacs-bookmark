@@ -68,7 +68,9 @@
   (it "initializes cleanly"
     (with-treemacs))
   (it "advises bookmark-bmenu-surreptitiously-rebuild-list"
-    (expect (advice-member-p #'treemacs-bookmark--update 'bookmark-bmenu-surreptitiously-rebuild-list) :to-be-truthy)))
+    (expect (advice-member-p #'treemacs-bookmark--update 'bookmark-bmenu-surreptitiously-rebuild-list) :to-be-truthy))
+  (it "errors when invoked outside Treemacs"
+    (expect (treemacs-bookmark-mode 1) :to-throw 'user-error)))
 
 (provide 'functional-test)
 
