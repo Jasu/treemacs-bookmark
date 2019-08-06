@@ -58,6 +58,18 @@
                                   bookmark-directory-with-slash
                                   bookmark-other))
 
+(describe "treemacs-bookmark--normalize-directory"
+  (it "returns / for /"
+    (expect (treemacs-bookmark--normalize-directory "/") :to-equal "/"))
+  (it "returns /hello/ for /hello"
+    (expect (treemacs-bookmark--normalize-directory "/hello") :to-equal "/hello/"))
+  (it "returns /hello/ for /hello/"
+    (expect (treemacs-bookmark--normalize-directory "/hello/") :to-equal "/hello/"))
+  (it "returns /hello/world/ for /hello/world"
+    (expect (treemacs-bookmark--normalize-directory "/hello/world") :to-equal "/hello/world/"))
+  (it "returns /hello/world/ for /hello/world/"
+    (expect (treemacs-bookmark--normalize-directory "/hello/world/") :to-equal "/hello/world/")))
+
 (describe "treemacs-bookmark--bookmark-in-directory-p"
   (it "returns nil for pathless bookmarks"
     (expect (treemacs-bookmark--bookmark-in-directory-p bookmark-other "/") :to-be nil)
