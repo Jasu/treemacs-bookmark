@@ -35,11 +35,55 @@
 
 (defgroup treemacs-bookmark nil "Treemacs Bookmark" :group 'treemacs)
 
+(defface treemacs-bookmark-in-workspace '((t :inherit treemacs-file-face))
+  "Face for bookmarks which are available in Treemacs.")
+
+(defface treemacs-bookmark-not-in-workspace '((t :inherit treemacs-git-ignored-face))
+  "Face for bookmarks which are not available in Treemacs.")
+
+(defface treemacs-bookmark-top-level '((t :inherit treemacs-root-face))
+  "Face for the top-level bookmarks button.")
+
+(defface treemacs-bookmark-project '((t :inherit treemacs-directory-face))
+  "Face for the per-project bookmarks button.")
+
+(defface treemacs-bookmark-dir '((t :inherit treemacs-directory-face))
+  "Face for the per-directory bookmarks button.")
+
+(defface treemacs-bookmark-man-page '((t :inherit treemacs-bookmark-in-workspace))
+  "Face for man page bookmarks.")
+
+(defface treemacs-bookmark-info '((t :inherit treemacs-bookmark-in-workspace))
+  "Face for Info page bookmarks.")
+
+(defface treemacs-bookmark-non-existent '((t :inherit treemacs-git-conflict-face))
+  "Face for bookmarks which do not exist on disk.")
+
+(defface treemacs-bookmark-other '((t :inherit treemacs-git-conflict-face))
+  "Face for bookmarks of unknown types.")
+
 (defvar treemacs-bookmark--current-bookmarks nil
   "List of bookmark paths that belong to some Treemacs project.")
 
 (defconst treemacs-bookmark--directory (file-name-directory load-file-name)
   "Directory where treemacs-bookmark.el resides.")
+
+(defun treemacs-bookmark--normalize-directory (directory)
+  "Make sure that DIRECTORY has a final slash."
+  (let ((directory-name (directory-file-name directory)))
+    (if (string= directory-name "/")
+        directory-name
+      (concat directory-name"/"))))
+
+(defun treemacs-bookmark--bookmark-in-directory-p (bookmark directory)
+  "Return non-nil if BOOKMARK is in DIRECTORY.
+
+DIRECTORY is assumed to be the truename of the directory, with a trailing slash."
+  (-when-let (path (bookmark-prop-get bookmark 'filename))
+    (unless (file-remote-p path)
+      (setq path (file-truename path)))
+    (and (string-prefix-p directory path)
+         (not (string= path directory)))))
 
 (defun treemacs-bookmark--get-bookmark-path ()
   "Get the path of the current bookmark node, NIL on failure.
@@ -53,27 +97,37 @@ On failure, error is pulsed."
        (treemacs-pulse-on-failure "Not on a Treemacs Bookmark"))))
 
 (defun treemacs-bookmark-goto-bookmark ()
-  "Go to the bookmark of the current button in Treemacs."
-  (interactive)
-  (-when-let*
-      ((path (treemacs-bookmark--get-bookmark-path))
-       (project
-        (or (treemacs-is-path path :in-workspace)
-            (treemacs-pulse-on-failure
-                "Bookmark '%s' is not in the Treemacs workspace." path))))
-    (treemacs-goto-file-node path project)
-    (when (file-directory-p path)
-      (let ((button (treemacs-current-button)))
-        (unless (treemacs-is-node-expanded? button)
-          (treemacs-toggle-node))
-        (treemacs-next-line 1)
-        (unless (= (treemacs-button-get (treemacs-current-button) :parent)
-                   button)
-          (treemacs-previous-line 1))))
-    (treemacs-pulse-on-success)))
+  "Go to the bookmark of the current button in Treemacs.
 
-(defun treemacs-bookmark-delete (&rest _)
-  "Delete the currently selected bookmark in Treemacs."
+This is used as the TAB action for bookmark nodes."
+  (interactive)
+  (-when-let* ((path (treemacs-bookmark--get-bookmark-path))
+               (project
+                (or (treemacs-is-path path :in-workspace)
+                    (treemacs-pulse-on-failure
+                        "Bookmark '%s' is not in the Treemacs workspace." path))))
+    (cond ((not (treemacs-goto-file-node path project))
+           ;; It is possible that the bookmarked file does not exist or is
+           ;; ignored in Treemacs.
+           (treemacs-pulse-on-failure "Bookmark '%s' was not found in the project." path))
+          (t
+           ;; When going to a directory, select the first file in it. If the
+           ;; node is not expanded, expand it first.
+           (when (file-directory-p path)
+             (let ((button (treemacs-current-button)))
+               (unless (treemacs-is-node-expanded? button)
+                 (treemacs-toggle-node))
+               (treemacs-next-line 1)
+               ;; Empty directory - move back to the parent, keeping it expanded.
+               (unless (= (treemacs-button-get (treemacs-current-button) :parent)
+                          button)
+                 (treemacs-previous-line 1))))
+           (treemacs-pulse-on-success)))))
+
+(defun treemacs-bookmark-delete ()
+  "Delete the currently selected bookmark in Treemacs.
+
+This is used as the delete action for bookmark nodes."
   (interactive)
   (treemacs-with-current-button
    "Not on a Treemacs button"
@@ -82,7 +136,7 @@ On failure, error is pulsed."
      (when (yes-or-no-p (concat "Delete bookmark " (bookmark-name-from-full-record bookmark) "? "))
        (bookmark-delete bookmark)))))
 
-(defun treemacs-bookmark-rename (&rest _)
+(defun treemacs-bookmark-rename ()
   "Rename the currently selected bookmark in Treemacs."
   (interactive)
   (treemacs-with-current-button
@@ -93,11 +147,13 @@ On failure, error is pulsed."
 
 (defun treemacs-bookmark-visit (btn)
   "Jump to the bookmark node at BTN."
-  (bookmark-jump (treemacs-safe-button-get btn :bookmark)))
+  (-some-> (treemacs-safe-button-get btn :bookmark)
+           (bookmark-jump)))
 
 (defun treemacs-bookmark-goto-or-visit (&optional arg)
   "Go to the current bookmark in Treemacs or visit the file if in workspace.
-Stay in current window with a prefix argument ARG."
+
+Stay in the current window with a prefix argument ARG."
   (interactive "P")
   (-when-let (path (treemacs-bookmark--get-bookmark-path))
     (if (treemacs-is-path path :in-workspace)
@@ -117,46 +173,6 @@ Stay in current window with a prefix argument ARG."
   (def treemacs-bookmark-directory-position 'top
        "Position of the per-directory bookmarks node."))
 
-(defface treemacs-bookmark-top-level
-  '((t :inherit treemacs-root-face
-       :foreground "deep sky blue"))
-  "Face for the top-level bookmarks button.")
-
-(defface treemacs-bookmark-project
-  '((t :inherit treemacs-dir-face
-       :foreground "deep sky blue"))
-  "Face for the per-project bookmarks button.")
-
-(defface treemacs-bookmark-dir
-  '((t :inherit treemacs-dir-face
-       :foreground "deep sky blue"))
-  "Face for the per-directory bookmarks button.")
-
-(defface treemacs-bookmark-man-page
-  '((t :inherit treemacs-bookmark-in-workspace
-       :foreground "cyan"))
-  "Face for man page bookmarks.")
-
-(defface treemacs-bookmark-info
-  '((t :inherit treemacs-bookmark-in-workspace
-       :foreground "green"))
-  "Face for Info page bookmarks.")
-
-(defface treemacs-bookmark-in-workspace
-  '((t :inherit treemacs-file-face))
-  "Face for bookmarks which are available in Treemacs.")
-
-(defface treemacs-bookmark-not-in-workspace
-  '((t :inherit treemacs-bookmark-in-workspace
-       :foreground "dark orange"))
-  "Face for bookmarks which are not available in Treemacs.")
-
-(defface treemacs-bookmark-non-existent
-  '((t :inherit treemacs-bookmark-in-workspace
-       :foreground "red"
-       :weight bold))
-  "Face for bookmarks which do not exist on disk.")
-
 (treemacs-define-leaf-node treemacs-bookmark-leaf 'dynamic-icon
                            :tab-action #'treemacs-bookmark-goto-or-visit
                            :visit-action #'treemacs-bookmark-visit
@@ -166,61 +182,58 @@ Stay in current window with a prefix argument ARG."
                            )
 
 (defun treemacs-bookmark--top-level-bookmarks ()
-  ; checkdoc-params: (checkdoc-symbol-words "top-level")
+                                        ; checkdoc-params: (checkdoc-symbol-words "top-level")
   "Get the list of bookmarks to show for the top-level bookmark list."
   bookmark-alist)
 
 (defun treemacs-bookmark--top-level-predicate (_)
-  ; checkdoc-params: (checkdoc-symbol-words "top-level")
+                                        ; checkdoc-params: (checkdoc-symbol-words "top-level")
   "Return non-nil if top-level bookmarks should be visible."
-  (and treemacs-bookmark-top-level-position
+  (and (bound-and-true-p treemacs-bookmark-mode)
+       treemacs-bookmark-top-level-position
        bookmark-alist))
 
 (defun treemacs-bookmark--project-predicate (project)
   "Return non-nil if any bookmark exists in PROJECT."
-  (and treemacs-bookmark-project-position
-       (--any (-some-->
-               (bookmark-prop-get it 'filename)
-               (treemacs-is-path (file-truename it) :in-project project))
-              bookmark-alist)))
+  (setq project (treemacs-bookmark--normalize-directory (treemacs-project->path project)))
+  (and (bound-and-true-p treemacs-bookmark-mode)
+       treemacs-bookmark-project-position
+       (--any (treemacs-bookmark--bookmark-in-directory-p it project) bookmark-alist)))
 
 (defun treemacs-bookmark--directory-predicate (directory)
   "Return non-nil if any bookmark exists in DIRECTORY."
-  (and treemacs-bookmark-directory-position
-       (--any (-some-->
-               (bookmark-prop-get it 'filename)
-               (treemacs-is-path directory :parent-of (file-truename it)))
-              bookmark-alist)))
+  (setq directory (treemacs-bookmark--normalize-directory directory))
+  (and (bound-and-true-p treemacs-bookmark-mode)
+       treemacs-bookmark-directory-position
+       (--any (treemacs-bookmark--bookmark-in-directory-p it directory) bookmark-alist)))
 
 (defun treemacs-bookmark--project-bookmarks (btn)
   "Get the list of bookmarks to show for the current project.
 
-BTN is the bookmark button."
-  (let ((project (treemacs-project-of-node btn)))
-    (--filter
-     (-some-->
-      (bookmark-prop-get it 'filename)
-      (treemacs-is-path (file-truename it) :in-project project))
-     bookmark-alist)))
+BTN is the bookmark extension expandable button."
+  (let ((path (-some-> (treemacs-project-of-node btn)
+                       (treemacs-project->path)
+                       (treemacs-bookmark--normalize-directory))))
+    (--filter (treemacs-bookmark--bookmark-in-directory-p it path) bookmark-alist)))
 
 (defun treemacs-bookmark--directory-bookmarks (btn)
   "Get the list of bookmarks to show for the current project.
 
-BTN is the bookmark button."
-  (let ((directory (car-safe (treemacs-safe-button-get btn :path))))
-    (--filter
-     (-some->>
-      (bookmark-prop-get it 'filename)
-      (file-truename)
-      (treemacs-is-path directory :parent-of))
-     bookmark-alist)))
+BTN is the bookmark extension expandable button."
+  ;; BTN refers to the expandable button, so its path is in form
+  ;; '("/home/jasu/.emacs.d" Treemacs-Bookmark-Directory).
+  ;; car-safe is used for robustness, not for any particular reason.
+  (let ((directory (-some-> (treemacs-button-get btn :path)
+                            (car-safe)
+                            (treemacs-bookmark--normalize-directory))))
+    (--filter (treemacs-bookmark--bookmark-in-directory-p it directory) bookmark-alist)))
 
 (define-inline treemacs-bookmark--get-project-roots ()
   "Get the list of Treemacs project root paths."
   (inline-quote
    (->> (treemacs-current-workspace)
         (treemacs-workspace->projects)
-        (--map (concat (treemacs-project->path it) "/")))))
+        (mapcar #'treemacs-bookmark--normalize-directory))))
 
 (define-inline treemacs-bookmark--get-project-by-root (root-path)
   "Get the Treemacs project by ROOT-PATH."
@@ -230,8 +243,8 @@ BTN is the bookmark button."
           (treemacs-workspace->projects it)
           (--first (string= ,root-path (treemacs-project->path it)) it)))))
 
-(defun treemacs-bookmark--get-lca-set (paths)
-  "Get the set of lowest common ancestors of PATHS.
+(defun treemacs-bookmark--remove-child-directories (paths)
+  "Returns a copy of PATHS without directories that are within some other path.
 
 E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
 '(\"/project1/a/b\" \"/project2\")."
@@ -241,6 +254,8 @@ E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
                  (let ((path it))
                    (--some (s-starts-with-p it path) project-roots))
                  paths))
+         ;; Sort the paths in descending order. This way, longer paths come
+         ;; first, and thus child paths come before parents.
          (paths (sort paths #'string>)))
     (cl-loop for paths-tail on paths
              for current-path = (car paths-tail) then (car paths-tail)
@@ -248,7 +263,7 @@ E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
              collect current-path)))
 
 (defun treemacs-bookmark--update-visible-node (path)
-  "Update Treemcs node by PATH if it's visible."
+  "Update Treemacs node by PATH if it is visible."
   (treemacs-save-position
    (-when-let (btn (treemacs-find-visible-node path))
      (when (treemacs-is-node-expanded? btn)
@@ -257,13 +272,13 @@ E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
        (treemacs-toggle-node)))))
 
 (defun treemacs-bookmark--get-paths (path project-roots)
-  "Gets PATH and its parents up to the Treemacs project root in PROJECT-ROOTS."
+  "Gets PATH and its parents up to its Treemacs project root in PROJECT-ROOTS."
   (-when-let (project-root (--find (s-starts-with-p it path) project-roots))
     (let ((result (list path)))
-      (while (and (not (string= path project-root))
-                  (not (string= path "/")))
-        (setq path (file-name-directory (s-chop-suffix "/" path)))
-        (message path)
+      ;; Infinite looping is not possible, a type error will be signaled if
+      ;; the root directory is met, since (file-name-directory "") returns nil.
+      (while (not (string= path project-root))
+        (setq path (file-name-directory (substring path 0 -1)))
         (push path result))
       result)))
 
@@ -278,29 +293,31 @@ that this function can safely be used as advice."
     (let*
         ;; Get a list of bookmark paths that belong to a Treemacs project.
         ((project-roots (treemacs-bookmark--get-project-roots))
-         (bookmarks (->>
-                     (--map (-when-let (path (-some-> (bookmark-prop-get it 'filename) (file-truename)))
-                              (when (--some (s-starts-with-p it path) project-roots)
-                                (s-chop-suffix "/" path)))
-                            bookmark-alist)
-                     (seq-filter #'identity)))
+         (bookmarks (--filter (let ((bookmark it))
+                                (--any (treemacs-bookmark--bookmark-in-directory-p bookmark it) project-roots))
+                              bookmark-alist))
          ;; Compute the sets of directories which had nodes added, but did not have
          ;; any previously and that had nodes previously but no longer have any.
          ;; These directories need to be updated in Treemacs completely, since the
          ;; directory/project extension node predicate is evaluated only when
          ;; updating the parent directory.
+         ;; Likewise, compute directories that had all their bookmarks removed.
          (old-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) treemacs-bookmark--current-bookmarks))
          (new-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) bookmarks))
-         (fully-updated-directories (treemacs-bookmark--get-lca-set
+         (fully-updated-directories (treemacs-bookmark--remove-child-directories
                                      (nconc (-difference new-directories old-directories)
                                             (-difference old-directories new-directories)))))
 
       ;; Update directories that now should or should not have the Bookmarks node at all.
-      (--each fully-updated-directories (treemacs-update-node (s-chop-suffix "/" it)))
+      (--each fully-updated-directories
+        ;; Remove the trailing slash unconditionally, as treemacs-bookmark--get-paths
+        ;; will always include it, as will file-name-directory.
+        (treemacs-update-node (substring it 0 -1)))
 
       ;; Update Bookmarks nodes with changes.
       (dolist (path bookmarks)
         (let ((dir (file-name-directory path)))
+          ;; A parent directory above the modified bookmark was already updated.
           (unless (--some (s-starts-with-p it dir) fully-updated-directories)
             (if (member dir project-roots)
                 (treemacs-update-node (list (treemacs-bookmark--get-project-by-root (s-chop-suffix "/" dir)) 'Treemacs-Bookmark-Project))
@@ -309,8 +326,10 @@ that this function can safely be used as advice."
       (setq treemacs-bookmark--current-bookmarks bookmarks))))
 
 (cl-macrolet
-    ((def (name &rest extra &key root-face &allow-other-keys)
+    ((def (name &rest extra)
           `(treemacs-define-expandable-node ,name
+             ;; Icon form must be used, since the icon may change if the theme
+             ;; is changed.
              :icon-open-form (treemacs-bookmark--icon)
              :icon-closed-form (treemacs-bookmark--icon)
 
@@ -319,18 +338,21 @@ that this function can safely be used as advice."
 
              :render-action
              (let* ((bookmark-path (bookmark-prop-get item 'filename))
-                    (exists (when bookmark-path
-                              (or (file-remote-p bookmark-path)
-                                  (file-exists-p bookmark-path))))
-                    (is-dir (when exists (file-directory-p bookmark-path)))
+                    (is-remote (when bookmark-path (file-remote-p bookmark-path)))
+                    ;; Remote files are assumed to exist - no file operations are performed on Tramp endpoints.
+                    (exists (and bookmark-path (or is-remote (file-exists-p bookmark-path))))
+                    (is-dir (when exists (if is-remote
+                                             ;; No error here - is-remote is always nil for empty strings.
+                                             (eq ?/ (aref bookmark-path (1- (length bookmark-path))))
+                                           (file-directory-p bookmark-path))))
                     (in-workspace (when exists (treemacs-is-path bookmark-path :in-workspace)))
                     (bookmark-type
                      (cond ((bookmark-prop-get item 'man-args) 'man-page)
                            ((bookmark-prop-get item 'info-node) 'info-page)
                            ((not exists) 'file-non-existent)
                            (is-dir (if in-workspace 'directory-in-workspace 'directory-not-in-workspace))
-                           (in-workspace 'file-in-workspace)
-                           (t 'file-not-in-workspace)))
+                           (bookmark-path (if in-workspace 'file-in-workspace 'file-not-in-workspace))
+                           (t 'other)))
                     (bookmark-name (car item)))
                (treemacs-render-node
                 :icon (pcase bookmark-type
@@ -338,17 +360,19 @@ that this function can safely be used as advice."
                         ('file-non-existent (treemacs-get-icon-value 'error))
                         ('directory-in-workspace (treemacs-get-icon-value 'dir-open))
                         ('directory-not-in-workspace (treemacs-get-icon-value 'dir-closed))
+                        ('other  (treemacs-get-icon-value 'warning))
                         (_ (treemacs-icon-for-file bookmark-path)))
                 :state treemacs-treemacs-bookmark-leaf-state
                 :label-form bookmark-name
                 :key-form bookmark-name
                 :more-properties (:bookmark item)
                 :face (pcase bookmark-type
+                        ((or 'directory-in-workspace 'file-in-workspace) 'treemacs-bookmark-in-workspace)
+                        ((or 'directory-not-in-workspace 'file-not-in-workspace) 'treemacs-bookmark-not-in-workspace)
+                        ('file-non-existent 'treemacs-bookmark-non-existent)
                         ('man-page 'treemacs-bookmark-man-page)
                         ('info-page 'treemacs-bookmark-info)
-                        ('file-non-existent 'treemacs-bookmark-non-existent)
-                        ((or 'directory-in-workspace 'file-in-workspace) 'treemacs-bookmark-in-workspace)
-                        ((or 'directory-not-in-workspace 'file-not-in-workspace) 'treemacs-bookmark-not-in-workspace))))
+                        ('other 'treemacs-bookmark-other))))
              ,@extra)))
   (def treemacs-bookmark-top-level
        :query-function (treemacs-bookmark--top-level-bookmarks)
@@ -396,11 +420,15 @@ that this function can safely be used as advice."
 
 ;;;###autoload
 (define-minor-mode treemacs-bookmark-mode
-  "Global minor mode for displaying bookmarks in Treemacs"
+  "Minor mode for displaying bookmarks in Treemacs.
+
+`treemacs-bookmark-mode' can only be enabled for Treemacs buffers."
   :group 'treemacs-bookmark
-  (unless (eq major-mode 'treemacs-mode)
-    (user-error "Cannot enable treemacs-bookmark-mode in a non-Treemacs buffer"))
   (cond (treemacs-bookmark-mode
+         ;; Only check major mode when enabling - if the user disables Treemacs
+         ;; mode before this, they should not be greeted with an error.
+         (unless (eq major-mode 'treemacs-mode)
+           (user-error "Cannot enable treemacs-bookmark-mode in a non-Treemacs buffer"))
          ;; Bookmark provides no hook for updating the bookmark list, so advice
          ;; the most ridiculously named function in Emacs instead and hope the
          ;; name won't change.
