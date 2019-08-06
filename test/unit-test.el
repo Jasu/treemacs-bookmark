@@ -235,6 +235,24 @@
       (let ((treemacs-bookmark-mode nil))
         (expect (treemacs-bookmark--project-predicate treemacs-project) :to-be nil)))))
 
+(describe "treemacs-bookmark--remove-child-directories"
+  (it "returns nil for nil"
+    (expect (treemacs-bookmark--remove-child-directories nil '("/")) :to-be nil))
+  (it "returns /a/b/ for /a/b/"
+    (expect (treemacs-bookmark--remove-child-directories '("/a/b/") '("/")) :to-equal '("/a/b/")))
+  (it "removes entries not in project directories"
+    (expect (treemacs-bookmark--remove-child-directories '("/a/b/" "/a/c/e/" "/a/c/d/" "/b/b/" "/") '("/a/c/" "/b/"))
+            :to-have-same-items-as '("/a/c/e/" "/a/c/d/" "/b/b/")))
+  (it "removes duplicates"
+    (expect (treemacs-bookmark--remove-child-directories '("/a/b/" "/a/b/") '("/"))
+            :to-equal '("/a/b/")))
+  (it "removes subdirectories"
+    (expect (treemacs-bookmark--remove-child-directories '("/a/b/" "/a/b/c/") '("/"))
+            :to-equal '("/a/b/")))
+  (it "removes subdirectories up to project directory"
+    (expect (treemacs-bookmark--remove-child-directories '("/a/b/" "/a/b/c/" "/a/b/c/d/") '("/a/b/c/"))
+            :to-equal '("/a/b/c/"))))
+
 (describe "faces defined by treemacs-bookmark"
   (it "have defined parents"
     (dolist (face (custom-group-members 'treemacs-bookmark nil))
@@ -243,6 +261,6 @@
           (expect inherit :to-be-truthy)
           (expect (facep inherit) :to-be-truthy))))))
 
-(provide 'treemacs-bookmark-test)
+(provide 'unit-test)
 
-;;; treemacs-bookmark-test.el ends here
+;;; unit-test.el ends here

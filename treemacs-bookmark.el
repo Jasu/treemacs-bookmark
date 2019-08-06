@@ -243,13 +243,12 @@ BTN is the bookmark extension expandable button."
           (treemacs-workspace->projects it)
           (--first (string= ,root-path (treemacs-project->path it)) it)))))
 
-(defun treemacs-bookmark--remove-child-directories (paths)
+(defun treemacs-bookmark--remove-child-directories (paths project-roots)
   "Returns a copy of PATHS without directories that are within some other path.
 
 E.g. '(\"/project1/a/b/c\" \"/project1/a/b\" \"/project2\") would return
 '(\"/project1/a/b\" \"/project2\")."
-  (let* ((project-roots (treemacs-bookmark--get-project-roots))
-         ;; Remove paths that don't belong to any Treemacs project.
+  (let* (;; Remove paths that don't belong to any Treemacs project.
          (paths (--filter
                  (let ((path it))
                    (--some (s-starts-with-p it path) project-roots))
@@ -306,7 +305,8 @@ that this function can safely be used as advice."
          (new-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) bookmarks))
          (fully-updated-directories (treemacs-bookmark--remove-child-directories
                                      (nconc (-difference new-directories old-directories)
-                                            (-difference old-directories new-directories)))))
+                                            (-difference old-directories new-directories))
+                                     project-roots)))
 
       ;; Update directories that now should or should not have the Bookmarks node at all.
       (--each fully-updated-directories
