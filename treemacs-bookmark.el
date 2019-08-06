@@ -166,7 +166,7 @@ Stay in the current window with a prefix argument ARG."
              :type '(choice (const :tag "Bottom" bottom)
                             (const :tag "Top" top)
                             (const :tag "Disabled" nil)))))
-  (def treemacs-bookmark-top-level-position 'bottom
+  (def treemacs-bookmark-top-level-position 'top
        "Position of the top-level bookmarks node.")
   (def treemacs-bookmark-project-position 'top
        "Position of the per-project bookmarks node.")
