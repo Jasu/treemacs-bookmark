@@ -160,10 +160,10 @@
   "Evaluate BODY with `treemacs-project' in PATH in context."
   (declare (indent 1))
   `(let ((treemacs-project (make-treemacs-project :name "Project"
-                                                 :path ,path
-                                                 :path-status 'local-readable)))
+                                                  :path ,path
+                                                  :path-status 'local-readable)))
      (with-default-settings
-       ,@body)))
+      ,@body)))
 
 (describe "treemacs-bookmark--project-predicate"
   (it "returns non-nil for root directory"
