@@ -65,6 +65,9 @@
 (defvar treemacs-bookmark--current-bookmarks nil
   "List of bookmark paths that belong to some Treemacs project.")
 
+(defvar treemacs-bookmark--truename-cache (make-hash-table)
+  "Cached `truename's of bookmarks.")
+
 (defconst treemacs-bookmark--directory (file-name-directory load-file-name)
   "Directory where treemacs-bookmark.el resides.")
 
@@ -81,7 +84,8 @@
 DIRECTORY is assumed to be the truename of the directory, with a trailing slash."
   (-when-let (path (bookmark-prop-get bookmark 'filename))
     (unless (file-remote-p path)
-      (setq path (file-truename path)))
+      (setq path (or (gethash path treemacs-bookmark--truename-cache)
+                     (puthash path (file-truename path) treemacs-bookmark--truename-cache))))
     (and (string-prefix-p directory path)
          (not (string= path directory)))))
 
