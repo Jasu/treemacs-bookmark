@@ -101,22 +101,22 @@
 (describe "treemacs-bookmark--top-level-predicate"
   (it "returns `bookmark-alist' when other conditions are true"
     (with-default-settings
-      (expect (treemacs-bookmark--top-level-predicate nil) :to-be bookmark-alist)))
+      (expect (treemacs-bookmark--top-level-predicate) :to-be bookmark-alist)))
 
   (it "returns nil when bookmark-alist is nil"
     (with-default-settings
       (let ((bookmark-alist nil))
-        (expect (treemacs-bookmark--top-level-predicate nil) :to-be nil))))
+        (expect (treemacs-bookmark--top-level-predicate) :to-be nil))))
 
   (it "returns nil when `treemacs-bookmark-top-level-position' is nil"
     (with-default-settings
       (let ((treemacs-bookmark-top-level-position nil))
-        (expect (treemacs-bookmark--top-level-predicate nil) :to-be nil))))
+        (expect (treemacs-bookmark--top-level-predicate) :to-be nil))))
 
   (it "returns nil when `treemacs-bookmark-mode' is nil"
     (with-default-settings
       (let ((treemacs-bookmark-mode nil))
-        (expect (treemacs-bookmark--top-level-predicate nil) :to-be nil)))))
+        (expect (treemacs-bookmark--top-level-predicate) :to-be nil)))))
 
 (describe "treemacs-bookmark--directory-predicate"
   (it "returns non-nil for root directory"
