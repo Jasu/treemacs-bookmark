@@ -237,6 +237,7 @@ BTN is the bookmark extension expandable button."
   (inline-quote
    (->> (treemacs-current-workspace)
         (treemacs-workspace->projects)
+        (mapcar #'treemacs-project->path)
         (mapcar #'treemacs-bookmark--normalize-directory))))
 
 (define-inline treemacs-bookmark--get-project-by-root (root-path)
@@ -305,8 +306,8 @@ that this function can safely be used as advice."
          ;; directory/project extension node predicate is evaluated only when
          ;; updating the parent directory.
          ;; Likewise, compute directories that had all their bookmarks removed.
-         (old-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) treemacs-bookmark--current-bookmarks))
-         (new-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory it) project-roots) bookmarks))
+         (old-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory (bookmark-prop-get it 'filename)) project-roots) treemacs-bookmark--current-bookmarks))
+         (new-directories (--mapcat (treemacs-bookmark--get-paths (file-name-directory (bookmark-prop-get it 'filename)) project-roots) bookmarks))
          (fully-updated-directories (treemacs-bookmark--remove-child-directories
                                      (nconc (-difference new-directories old-directories)
                                             (-difference old-directories new-directories))
@@ -319,8 +320,8 @@ that this function can safely be used as advice."
         (treemacs-update-node (substring it 0 -1)))
 
       ;; Update Bookmarks nodes with changes.
-      (dolist (path bookmarks)
-        (let ((dir (file-name-directory path)))
+      (dolist (bookmark bookmarks)
+        (let ((dir (file-name-directory (bookmark-prop-get bookmark 'filename))))
           ;; A parent directory above the modified bookmark was already updated.
           (unless (--some (s-starts-with-p it dir) fully-updated-directories)
             (if (member dir project-roots)
